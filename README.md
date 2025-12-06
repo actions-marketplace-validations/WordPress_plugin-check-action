@@ -1,4 +1,4 @@
-# wp-plugin-check-action
+# WordPress Plugin Check Action
 
 A GitHub action to run [Plugin Check](https://wordpress.org/plugins/plugin-check/) against your plugin.
 
@@ -45,6 +45,13 @@ See [action.yml](action.yml)
     # Default: ''
     exclude-checks: ''
 
+    # List of error codes to ignore.
+    # Each error code should be separated with new lines.
+    # Examples: textdomain_mismatch, WordPress.Security.EscapeOutput.OutputNotEscaped.
+    #
+    # Default: ''
+    ignore-codes: ''
+
     # List of categories to limit checks to.
     # Each category should be separated with new lines.
     # Examples: general, security
@@ -53,8 +60,14 @@ See [action.yml](action.yml)
     # Default: ''
     categories: ''
 
+    # List of files (file paths) to exclude from checks.
+    # Each file should be separated with new lines.
+    #
+    # Default: ''
+    exclude-files: ''
+    
     # List of directories to exclude from checks.
-    # Each category should be separated with new lines.
+    # Each directory should be separated with new lines.
     #
     # Default: ''
     exclude-directories: ''
@@ -78,6 +91,41 @@ See [action.yml](action.yml)
     #
     # Default: latest
     wp-version: ''
+
+    # Severity level.
+    #
+    # Default: ''
+    severity: ''
+
+    # Error severity level.
+    #
+    # Default: ''
+    error-severity:
+
+    # Warning severity level.
+    #
+    # Default: ''
+    warning-severity:
+
+    # Include errors with lower severity than the threshold as other type.
+    #
+    # Default: ''
+    include-low-severity-errors: ''
+
+    # Include warnings with lower severity than the threshold as other type.
+    #
+    # Default: ''
+    include-low-severity-warnings: ''
+
+    # Slug to override the default.
+    #
+    # Default: ''
+    slug:
+
+    # Treat everything as an error.
+    #
+    # Default: false
+    strict: ''
 ```
 
 ### Basic
@@ -110,7 +158,7 @@ jobs:
 
 The basic example above covers many use cases, but sometimes plugins can be a bit more
 complex and involve some sort of build process.
-Also, if you already use tools like PHPCS, you might want to use the PHPCS-based checks
+Also, if you already use tools like PHPCS, you might want to skip the PHPCS-based checks
 from Plugin Check but focus on the ones that are more useful for you.
 
 ```yaml
@@ -133,6 +181,40 @@ steps:
     categories: |
       performance
       accessibility
+```
+
+A common build step involves the [`wp dist-archive`](https://github.com/wp-cli/dist-archive-command/) command.
+In combination with Plugin Check it could be used like this:
+
+```yaml
+steps:
+  - name: Checkout
+    uses: actions/checkout@v3
+
+  # Here's where you would run your custom build process
+  # ...
+  # ...
+
+  - name: Setup PHP
+    uses: shivammathur/setup-php@v2
+    with:
+        php-version: latest
+        coverage: none
+        tools: wp-cli
+
+  - name: Install latest version of dist-archive-command
+    run: wp package install wp-cli/dist-archive-command:@stable
+
+  - name: Build plugin
+    run: |
+      wp dist-archive . ./my-awesome-plugin.zip
+      mkdir tmp-build
+      unzip my-awesome-plugin.zip -d tmp-build
+
+  - name: Run plugin check
+    uses: wordpress/plugin-check-action@v1.0.6
+    with:
+      build-dir: './tmp-build/my-awesome-plugin'
 ```
 
 ### Supported Checks
