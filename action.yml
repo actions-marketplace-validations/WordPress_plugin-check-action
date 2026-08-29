@@ -85,7 +85,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up Node
-      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: '24'
 
@@ -97,11 +97,19 @@ runs:
         PLUGIN_SLUG=$(basename $PLUGIN_DIR)
         echo "PLUGIN_SLUG=$PLUGIN_SLUG" >> "$GITHUB_ENV"
         
-        # Check if .wp-env.json exists in the plugin directory before we create one
-        if [ -f "$PLUGIN_DIR/.wp-env.json" ]; then
-          echo "WP_ENV_JSON_EXISTS=true" >> "$GITHUB_ENV"
+        # wp-env always reads its config from the working directory, which is
+        # only the same as the plugin directory when build-dir is './'.
+        WP_ENV_DIR=$(realpath .)
+        WP_ENV_JSON="$WP_ENV_DIR/.wp-env.json"
+        echo "WP_ENV_JSON=$WP_ENV_JSON" >> "$GITHUB_ENV"
+
+        # Plugin Check only ever sees the file if this action creates it inside
+        # the directory being scanned. A .wp-env.json that was already there is
+        # part of the plugin and should be checked like any other file.
+        if [ ! -f "$WP_ENV_JSON" ] && [ "$WP_ENV_DIR" = "$PLUGIN_DIR" ]; then
+          echo "WP_ENV_JSON_GENERATED=true" >> "$GITHUB_ENV"
         else
-          echo "WP_ENV_JSON_EXISTS=false" >> "$GITHUB_ENV"
+          echo "WP_ENV_JSON_GENERATED=false" >> "$GITHUB_ENV"
         fi
       shell: bash
       env:
@@ -109,9 +117,40 @@ runs:
 
     - name: Setup wp-env
       run: |
-        touch .wp-env.json
-        > .wp-env.json
-        echo "{ \"core\": $WP_VERSION, \"port\": 8880, \"testsPort\": 8881, \"plugins\": [ \"https://downloads.wordpress.org/plugin/plugin-check.zip\" ], \"mappings\": { \"wp-content/plugins/$PLUGIN_SLUG\": \"$PLUGIN_DIR\" } }" >> .wp-env.json
+        # Merge the settings this action needs into any config the plugin
+        # already has, instead of overwriting it. Everything it configured --
+        # most importantly `config`, which is how WP_DEBUG and friends are
+        # set -- is preserved.
+        node -e '
+          const fs = require( "fs" );
+
+          const file = process.env.WP_ENV_JSON;
+          const config = fs.existsSync( file )
+            ? JSON.parse( fs.readFileSync( file, "utf8" ) )
+            : {};
+
+          // Only pin core when a specific version was requested, so that a
+          // core set by the plugin survives the default of "latest".
+          const core = JSON.parse( process.env.WP_VERSION );
+          if ( core !== null ) {
+            config.core = core;
+          } else if ( ! ( "core" in config ) ) {
+            config.core = null;
+          }
+
+          config.port = config.port ?? 8880;
+          config.testsPort = config.testsPort ?? 8881;
+          config.mappings = {
+            ...config.mappings,
+            [ "wp-content/plugins/" + process.env.PLUGIN_SLUG ]: process.env.PLUGIN_DIR,
+          };
+
+          fs.writeFileSync( file, JSON.stringify( config, null, 2 ) + "\n" );
+        '
+
+        echo "::group::Effective .wp-env.json"
+        cat "$WP_ENV_JSON"
+        echo "::endgroup::"
 
         npm -g --no-fund i @wordpress/env
       shell: bash
@@ -119,12 +158,14 @@ runs:
         WP_VERSION: ${{ inputs.wp-version == 'trunk' && '"WordPress/WordPress#master"' || 'null' }}
 
     - name: Start wp-env
-      uses: nick-fields/retry@v4
+      uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
       with:
         timeout_minutes: 10
         max_attempts: 3
         shell: bash
-        command: wp-env start --update
+        command: |
+          wp-env start --update
+          wp-env run cli wp cli info
 
     - name: Run Plugin Check
       run: |
@@ -135,8 +176,8 @@ runs:
         EXCLUDE_DIRS="${EXCLUDE_DIRS//$'\n'/,}"
         IGNORE_CODES="${IGNORE_CODES//$'\n'/,}"
         
-        # Only exclude .wp-env.json if it was created by this action (didn't exist before)
-        if [ "$WP_ENV_JSON_EXISTS" = "false" ]; then
+        # Only exclude .wp-env.json if this action created it inside the directory being checked.
+        if [ "$WP_ENV_JSON_GENERATED" = "true" ]; then
           if [ -n "$EXCLUDE_FILES" ]; then
             EXCLUDE_FILES="--exclude-files=${EXCLUDE_FILES#--exclude-files=},.wp-env.json"
           else
@@ -145,6 +186,16 @@ runs:
         fi
         
         ADDITIONAL_ARGS="$CHECKS $EXCLUDE_CHECKS $CATEGORIES $IGNORE_CODES $IGNORE_WARNINGS $IGNORE_ERRORS $INCLUDE_EXPERIMENTAL $EXCLUDE_FILES $EXCLUDE_DIRS $SEVERITY $ERROR_SEVERITY $WARNING_SEVERITY $INCLUDE_LOW_SEVERITY_ERRORS $INCLUDE_LOW_SEVERITY_WARNINGS $SLUG"
+
+        echo "::group::Install Plugin Check"
+
+        if wp-env run cli wp plugin is-installed plugin-check; then
+          wp-env run cli wp plugin activate plugin-check
+        else
+          wp-env run cli wp plugin install plugin-check --activate
+        fi
+
+        echo "::endgroup::"
 
         echo "::group::Debugging information"
         wp-env run cli wp cli info
@@ -207,7 +258,7 @@ runs:
         STRICT: ${{ inputs.strict }}
 
     - name: Upload artifact
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       if: ${{ always() }}
       with:
         name: plugin-check-results${{ inputs.slug && format('-{0}', inputs.slug) || '' }}

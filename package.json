@@ -14,31 +14,37 @@
     "node",
     "setup"
   ],
-  "main": "lib/main.js",
+  "main": "src/main.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmit",
     "format": "prettier --write '**/*.ts'",
     "format-check": "prettier --check '**/*.ts'",
     "lint": "eslint src/**/*.ts",
-    "package": "ncc build --source-map --license licenses.txt",
+    "package": "ncc build --source-map --license licenses.txt src/main.ts -o dist",
+    "test": "vitest run",
     "all": "npm run build && npm run format && npm run lint && npm run package"
   },
   "dependencies": {
-    "@actions/core": "^3.0.0",
-    "@actions/github": "^9.0.0"
+    "@actions/core": "^3.0.1",
+    "@actions/github": "^9.1.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.5.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.2",
-    "@typescript-eslint/parser": "^8.57.1",
-    "@vercel/ncc": "^0.38.4",
-    "eslint": "^10.1.0",
+    "@types/node": "^26.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.61.1",
+    "@typescript-eslint/parser": "^8.66.0",
+    "@vercel/ncc": "^0.45.0",
+    "eslint": "^10.8.1",
     "eslint-plugin-github": "^6.0.0",
-    "eslint-plugin-prettier": "^5.5.5",
-    "globals": "^17.4.0",
-    "prettier": "^3.8.1",
-    "ts-jest": "^29.4.5",
-    "typescript": "^5.9.3"
+    "eslint-plugin-prettier": "^5.5.6",
+    "globals": "^17.11.0",
+    "prettier": "^3.8.4",
+    "ts-jest": "^29.4.11",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "fsevents": false,
+    "unrs-resolver": false
   }
 }
